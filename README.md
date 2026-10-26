@@ -94,7 +94,7 @@ sequenceDiagram
 | `void BlackboardReadRelease(Blackboard_T *bb)` | 阶段2之后：释放读。计数归零时触发 `onReadersEmpty` 回调。仅申请成功者（或固定读者场景归还预登记计数）调用，必须配对。 |
 | `void BlackboardWriteRelease(Blackboard_T *bb)` | 阶段2之后：释放写（CAS 实现，误配对触发断言）。仅申请成功者调用。 |
 
-### 3. 示例（来自 `_example`：SysTick 写者 + 主循环/按键读者）
+### 3. 示例（SysTick 写者 + 主循环/按键读者）
 
 ```c
 #include "blackboard.h"
