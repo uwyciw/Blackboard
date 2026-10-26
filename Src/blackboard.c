@@ -2,12 +2,6 @@
   ******************************************************************************
   * @file    blackboard.c
   * @brief   Blackboard 实现 —— 全部状态迁移均为原子操作，无锁、无禁用中断
-  *
-  *          内存序约定：
-  *            申请成功  acquire —— 临界区内对数据区域的访问不被重排到申请之前
-  *            释放      release —— 临界区内的修改先于释放对其它观察者可见
-  *            读释放    acq_rel —— 归零回调能看到此前所有读者的访问结果
-  *            探测/失败 relaxed —— 不构成同步，避免多余屏障（DMB）开销
   ******************************************************************************
   */
 
@@ -38,8 +32,8 @@ bool BlackboardReadRequest(Blackboard_T *bb)
          */
         if (atomic_compare_exchange_weak_explicit(
                 &bb->state, &s, s + 1,
-                memory_order_acquire,   /* 成功：获取语义，保护后续对数据区域的读 */
-                memory_order_relaxed))  /* 失败：s 已被更新为最新值 */
+                memory_order_relaxed,
+                memory_order_relaxed))
             return true;
     }
 }
@@ -53,13 +47,11 @@ void BlackboardReadRelease(Blackboard_T *bb)
             return;
         }
         /* CAS：仅当计数仍 > 0 时才减 1。
-         * acq_rel：release 保证本读者的读先于减计数对他人可见；
-         * acquire 保证最后一个读者能看到此前所有读者的访问结果。
          * 失败时 s 已被更新（可能被其他读者改小/改大），下一轮重新检查。
          */
         if (atomic_compare_exchange_weak_explicit(
                 &bb->state, &s, s - 1,
-                memory_order_acq_rel,
+                memory_order_relaxed,
                 memory_order_relaxed)) {
             if (s == 1 && bb->onReadersEmpty != NULL)
                 bb->onReadersEmpty(bb);     /* 读者计数归零：触发回调 */
@@ -74,7 +66,7 @@ bool BlackboardWriteRequest(Blackboard_T *bb)
     /* 单次 CAS：仅空闲(0)才能切换到写(-1)；其他状态立即失败 */
     return atomic_compare_exchange_strong_explicit(
         &bb->state, &expected, -1,
-        memory_order_acquire,
+        memory_order_relaxed,
         memory_order_relaxed);
 }
 
@@ -86,7 +78,7 @@ void BlackboardWriteRelease(Blackboard_T *bb)
     int expected = -1;
     bool ok = atomic_compare_exchange_strong_explicit(
         &bb->state, &expected, 0,
-        memory_order_release,   /* 临界区内的修改先于释放对其它线程可见 */
+        memory_order_relaxed,
         memory_order_relaxed);
     assert(ok);                 /* 失败说明调用方未配对使用 */
     (void)ok;
@@ -100,6 +92,6 @@ bool BlackboardFreeRequest(Blackboard_T *bb)
      */
     return atomic_compare_exchange_strong_explicit(
         &bb->state, &expected, -2,
-        memory_order_acquire,
+        memory_order_relaxed,
         memory_order_relaxed);
 }
